@@ -789,7 +789,7 @@ http.createServer((request, response) => {
 
         // Website you wish to allow to connect
         // response.setHeader('Access-Control-Allow-Origin', 'http://localhost:4200');
-         response.setHeader('Access-Control-Allow-Origin', 'https://questiongeneratingwebsite.herokuapp.com/QGTool');
+         response.setHeader('Access-Control-Allow-Origin', 'https://questiongeneratingwebsite.herokuapp.com');
 
         // Request methods you wish to allow
         response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
