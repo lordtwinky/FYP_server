@@ -767,7 +767,7 @@ function capitalizeFirstLetter(string) {
 }
 
 
-https.createServer((request, response) => {
+http.createServer((request, response) => {
     const { headers, method, url } = request;
     let body = [];
     var text = "";
@@ -789,7 +789,7 @@ https.createServer((request, response) => {
 
         // Website you wish to allow to connect
         // response.setHeader('Access-Control-Allow-Origin', 'http://localhost:4200');
-        response.setHeader('Access-Control-Allow-Origin', 'https://questiongeneratingwebsite.herokuapp.com');
+         response.setHeader('Access-Control-Allow-Origin', 'https://questiongeneratingwebsite.herokuapp.com/QGTool');
 
         // Request methods you wish to allow
         response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
