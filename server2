@@ -1,0 +1,95 @@
+// var info = []
+
+// wordnet.lookup('Korea', function(results) {
+//     results.forEach(function(result) {
+//         info.push(result.synsetOffset);
+//         info.push(result.pos);
+//         info.push(result.lemma);
+//         info.push(result.synonyms);
+//         info.push(result.pos);
+//         info.push(result.gloss);
+//         info.push("--------------");
+//     });
+//  });
+
+// var express = require('express');
+// var path = require('path');
+// var bodyParser = require('body-parser');
+
+// var index = require('./routes/index');
+// var tasks = require('./routes/tasks');
+
+// var app = express();
+
+// var port = 3000;
+
+// //View Engine
+// app.set('views', path.join(__dirname, 'views'));
+// app.set('view engine', 'ejs');
+// app.engine('html',require('ejs').renderFile);
+
+// //Set Static Folder
+// app.use(express.static(path.join(__dirname, 'client')));
+
+// //Body Parser MW
+// app.use(bodyParser.json());
+// app.use(bodyParser.urlencoded({extended: false}));
+// app.use('/', index);
+// app.use('/api', tasks);
+// app.listen(port, function(){
+//     console.log('Serve started on port' + port)
+// });
+
+
+// var mlspotlight = require('dbpedia-spotlight');
+
+// var xx=""
+// mlspotlight.annotate(fileText,function(output){
+//    xx = output;
+// });
+
+wordpos.getPOS(fileText, function (result) {
+    parsedText = result
+});
+
+    // JSONObjects = JSON.parse(JSONText)
+    // var adjs = JSONObjects.adjectives
+    // var verbs = JSONObjects.verbs
+    // var nouns = JSONObjects.nouns
+    // var adverbs = JSONObjects.adverbs
+    // var rest = JSONObjects.rest
+    // var JSONTexteeee = JSON.stringify(info, null, 5)
+
+
+
+    //  JSONObjects = JSON.parse(JSONxx)
+    //  var fire=JSONObjects.Resources
+    //var JSONTexteeee = JSON.stringify(JSONTokSent, null, 5)
+
+    // response.write(JSONTokSent + "</br>" + people + "</br>" + places + "</br>" + nouns + "</br>" + verbs + "</br>" + values + "</br>" + adjectives + "</br>"  + dates )
+
+        if (who == true) {
+        WhoQuestion(taggedTokSent)
+    }
+    if (where == true) {
+        WhereQuestion(taggedTokSent)
+    }
+    if (when == true) {
+        WhenQuestion(taggedTokSent)
+    }
+    if (valobjnum > 0) {
+        HowManyQuestion(taggedTokSent, valobjnum)
+    }
+
+
+    EntitiesRec.push(people)
+    EntitiesRec.push(places)
+    EntitiesRec.push(values)
+    EntitiesRec.push(dates)
+
+    
+        //const responseBody = { headers, method, url, body };
+
+        // response.write(JSON.stringify(responseBody));
+        //response.write(body)
+        // response.write(text)
