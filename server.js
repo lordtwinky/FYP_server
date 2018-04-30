@@ -46,6 +46,7 @@ function preProcessing(sentence) {
             sentence[i] == '-'
         }
     }
+    sentence = sentence.replace(/\[.*?\]/g, " ")
     return sentence
 }
 
@@ -59,15 +60,19 @@ function taggify(arraySentences) {
     var whereq2 = []
     var whenq1 = []
     var whenq2 = []
-
+    var howManyq1 = []
+    var howManyq2 = []
+    var tokens = []
 
     //For each sentence within the text,
     for (var i = 0; i < arraySentences.length; i++) {
+
         var sentence = preProcessing(arraySentences[i])
         //we first tokenize the sentence to convert the string to an array of treebank tokens
         var tokenizedSent = TreeBankTok.tokenize(sentence);
         //we then use the tagger to assign the treebank tokens with a part of speech(noun, verb, adverb, adj, etc.) 
         var taggedTokSent = tagger.tag(tokenizedSent)
+        tokens.push(taggedTokSent)
         //now that our sentences are tagged, we will use a form of entity recognition to give more specific parts of speech (for example the word 'Paris' would transform from 'NNP' to 'LOC')
         //to do this we use the compromise library which will return arrays of different elements, in order to convert into specific WH questions 
         var doc = nlp(sentence)
@@ -75,17 +80,20 @@ function taggify(arraySentences) {
         people = (doc.people().out('array'))
         //places -> Where
         places = (doc.places().out('array'))
-        // dates -> When
-        dates = (doc.dates().out('array'))
         //values -> How many
         values = (doc.values().out('array'))
+        // dates -> When
+        dates = (doc.dates().out('array'))
 
-        // organizations = (doc.organizations().out('array'))
+        matchItems(people, taggedTokSent, labelPerson)
+        matchItems(places, taggedTokSent, labelLocation)
+        matchItems(values, taggedTokSent, labelValueObject)
+        matchItems(dates, taggedTokSent, labelDate)
 
-        var whoQAs = matchItems(people, taggedTokSent, labelPerson)
-        var whereQAs = matchItems(places, taggedTokSent, labelLocation)
-        var whenQAs = matchItems(dates, taggedTokSent, labelDate)
-        //var howManyQAs = valobjTag(taggedTokSent)
+        var whoQAs = questionize(taggedTokSent, labelPerson)
+        var whereQAs = questionize(taggedTokSent, labelLocation)
+        // var howManyQAs = questionize(taggedTokSent, labelValueObject)
+        var whenQAs = questionize(taggedTokSent, labelDate)
 
 
         if (whoQAs !== null && whoQAs !== undefined && whoQAs.length > 0) {
@@ -109,10 +117,18 @@ function taggify(arraySentences) {
             whenq2.push(whenQAs[1])
         }
 
+        // if (howManyQAs !== null && howManyQAs !== undefined && howManyQAs.length > 0) {
+        //     howManyQAs[0].push(i)
+        //     howManyq1.push(howManyQAs[0])
+        //     howManyQAs[1].push(i)
+        //     howManyq2.push(howManyQAs[1])
+        // }
+
     }
     var allWhoQAs = whoq1.concat(whoq2)
     var allwhereQAs = whereq1.concat(whereq2)
     var allwhenQAs = whenq1.concat(whenq2)
+    // var allhowManyQAs = howManyq1.concat(howManyq2)
 
     QAs.push(allWhoQAs)
     QAs.push(allwhereQAs)
@@ -134,10 +150,14 @@ function questionize(sentence, label) {
             var whenQAs = whenQuestion(sentence);
             return whenQAs
             break;
+        case labelValueObject:
+            var howManyQAs = howManyQuestion(sentence);
+            return howManyQAs
+            break;
     }
 }
 
-// matchItems(organizations, taggedTokSent, labelOrganization)
+//we overwrite parts of speech with corresponding NER entities
 function matchItems(group, taggedTokSent, label) {
     for (var y = 0; y < group.length; y++) {
         var groupItem = group[y]
@@ -146,7 +166,7 @@ function matchItems(group, taggedTokSent, label) {
             for (var z = 0; z < taggedTokSent.length; z++) {
                 if (wordArray[x].toUpperCase() == taggedTokSent[z][0].toUpperCase()) {
                     if (label == labelPerson || label == labelLocation) {
-                        if (taggedTokSent[z][1] == "NNP" || taggedTokSent[z][1] == "N") {
+                        if (taggedTokSent[z][1] == "NNP" || taggedTokSent[z][1] == "N" || taggedTokSent[z][1] == "RB") {
                             taggedTokSent[z][1] = label
                         }
                     }
@@ -162,8 +182,6 @@ function matchItems(group, taggedTokSent, label) {
             }
         }
     }
-    var questionAnswer = questionize(taggedTokSent, label)
-    return questionAnswer
 }
 
 
@@ -178,14 +196,16 @@ function whoQuestion(sentence) {
     for (var word = 0; word < sentence.length; word++) {
         tokenSentence = tokenSentence + sentence[word][1] + " "
     }
-    var regex1 = new RegExp('(NNP\.PERS)+ \(.*\) VBD DT');
+    var regex1 = new RegExp('(NNP\.PERS)+ .*(VBD|VBG|VBN|VBP|VBZ)');
     var regex2 = new RegExp('(NNP\.PERS)+ VBD DT');
     if (regex1.test(tokenSentence) == true || regex2.test(tokenSentence) == true) {
 
         var person = ""
         var location = ""
+        var date = ""
         var subject = ""
-        var verb
+        var verb1
+        var verb2
         var locationT = ""
         var bool = false
         var verbBool = false
@@ -194,43 +214,116 @@ function whoQuestion(sentence) {
         var subjSet = false
         var sentenceActionArray = []
         var sentenceAction = ""
+        var sentenceActionBool = false
+        var sentenceActionCommaBool = false
+        var secondsentencesegment = false
+        var secondsentenceaction = false
+        var pastensebool = false
+        var compositeverb = true
+        var compositePerson = false
+        var verbAddIn = ""
+        var paranthesisBool = false
 
         for (var word = 0; word < sentence.length; word++) {
             if (sentence[word][1] == labelPerson && subjSet == false) {
+                if (sentence[word - 1] == undefined) {
+
+                }
+                else if (sentence[word - 1][1] == "NNP") {
+                    person = person + sentence[word - 1][0] + " "
+                }
                 person = person + sentence[word][0] + " "
                 bool = true
             }
             else if (bool == true && verbBool == false) {
-                if (sentence[word][1] == "VBN") {
-                    verb = sentence[word][0]
-                    verbBool = true
-                }
-                else if (sentence[word][1] == "VBD") {
-                    verb = sentence[word][0]
+                if (sentence[word][1] == "VBN" || sentence[word][1] == "VBD") {
+                    var verbTenses = nlp('You ' + sentence[word][0] + ' them').verbs().conjugate()[0]
+                    if (verbTenses == undefined) {
+                        verb1 = sentence[word][0]
+                    }
+                    else if (verbTenses.PastTense == sentence[word][0]) {
+                        pastensebool = true
+                    }
+                    verb1 = sentence[word][0]
+                    verb2 = sentence[word][0]
                     verbBool = true
                 }
                 subjSet = true
             }
             else if (verbBool == true) {
-                if (sentence[word][1] !== ".") {
-                    sentenceActionArray.push(sentence[word][0])
+                if ((sentence[word][1] == "VBN" || sentence[word][1] == "VBD") && compositeverb == true) {
+                    verb1 = verb1 + " " + sentence[word][0]
+                    verb2 = verb2 + " " + sentence[word][0]
                 }
+                else {
+                    if (sentence[word][0] == "," || sentence[word][1] == "and") {
+                        secondsentencesegment = true
+                    }
+                    else if (secondsentencesegment == true && (sentence[word][1] == "VBN" || sentence[word][1] == "VBD")) {
+                        secondsentenceaction = true
+                    }
+                    else if (secondsentenceaction == false) {
+                        secondsentencesegment = false
+                        sentenceActionArray.push(sentence[word][0])
+                    }
+                    compositeverb = false
+                }
+
             }
         }
-        if (person !== "" && verb !== undefined) {
-            for (var sentenceAct = 0; sentenceAct < sentenceActionArray.length; sentenceAct++) {
-                sentenceAction = sentenceAction + sentenceActionArray[sentenceAct] + " "
+        if (person !== "" && verb1 !== undefined) {
+            if (secondsentenceaction == true && sentenceActionArray[sentenceActionArray.length - 1] == "that") {
+                sentenceActionArray.splice(sentenceActionArray.length - 1, 1)
             }
-            if (verb == "was" || verb == "is") {
-                var question1 = "Who " + verb + " " + person + "?"
+            if (sentenceActionArray[sentenceActionArray.length - 1] == ".") {
+                sentenceActionArray.splice(sentenceActionArray.length - 1, 1)
+            }
+            if (sentenceActionArray[0] == "into") {
+                sentenceActionArray.splice(0, 1)
+                verbAddIn = " into"
+            }
+            if (sentenceActionArray[0] == "for") {
+                sentenceActionArray.splice(0, 1)
+                verbAddIn = " for"
+            }
+            if (sentenceActionArray[0] == "by") {
+                sentenceActionArray.splice(0, 1)
+                verbAddIn = " by"
+            }
+            if (sentenceActionArray[0] == "of") {
+                sentenceActionArray.splice(0, 1)
+                verbAddIn = " of"
+            }
+            if (sentenceActionArray[0] == "as") {
+                sentenceActionArray.splice(0, 1)
+                verbAddIn = " as"
+            }
+            for (var sentenceAct = 0; sentenceAct < sentenceActionArray.length; sentenceAct++) {
+                if (sentenceActionArray[sentenceAct] == "(") {
+                    paranthesisBool = true
+                }
+                if (sentenceActionArray[sentenceAct] == ")") {
+                    paranthesisBool = false
+                }
+                else if (paranthesisBool == false) {
+                    sentenceAction = sentenceAction + sentenceActionArray[sentenceAct] + " "
+                }
+
+            }
+            if (verb1 == "was" || verb1 == "is") {
+                var question1 = "Who was" + " " + person + "?"
+                var answer1 = capitalizeFirstLetter(sentenceAction)
+            }
+            else if (pastensebool == true) {
+                var question1 = "What was it that " + person + " " + verb1 + verbAddIn + "?"
                 var answer1 = capitalizeFirstLetter(sentenceAction)
             }
             else {
-                var question1 = "What did " + person + " " + verb + "?"
+                var question1 = "What did " + person + " " + verb1 + "?"
                 var answer1 = capitalizeFirstLetter(sentenceAction)
             }
 
-            var question2 = "Who " + verb + " " + sentenceAction + "?"
+            var question2 = "Who " + verb2 + " " + sentenceAction + "?"
             var answer2 = person
 
         }
@@ -250,98 +343,157 @@ function whoQuestion(sentence) {
 }
 
 function whereQuestion(sentence) {
-    var whereQAs = [];
-    var whereQAs2 = [];
     var tokenSentence = ""
     var arrQuestions = []
     var arrAnswers = []
     var arrQandA = []
-    var question
+    var whereQAs = [];
+    var whereQAs2 = [];
     for (var word = 0; word < sentence.length; word++) {
         tokenSentence = tokenSentence + sentence[word][1] + " "
     }
     var regex1 = new RegExp('((NNP\.LOC)+|NNP+|(NNP\.PERS)+|NNPS+|NN+|N+) (VB.*) .* NNP.LOC');
     var regex1InVariation = new RegExp('((NNP\.LOC)+|NNP+|(NNP\.PERS)+|NNPS+|NN+|N+) (VB.*) .* IN NNP.LOC');
-    if (regex1.test(tokenSentence) == true || regex1InVariation.test(tokenSentence) == true) {
 
-        var person = ""
-        var location = ""
-        var subject = ""
-        var verb
-        var locationT = ""
-        var bool = false
-        var verbBool = false
-        var inBool = false
-        var locationBool = false
-        var subjSet = false
-        var sentenceActionArray = []
-        var sentenceAction = ""
 
-        for (var word = 0; word < sentence.length; word++) {
-            if (sentence[word][1] == labelPerson && subjSet == false) {
-                person = person + sentence[word][0] + " "
-                bool = true
+    var personBool = false;
+    var locationBool = false;
+    var nounsubjectBool = false
+    var verb1
+    var verb2
+    var date = ""
+    var date2 = ""
+    var person = ""
+    var location = ""
+    var nounSubject = ""
+    var IN
+    var verbBool = false
+    var inBool = false
+    var inboolword = ""
+    var complexDate = false
+    var complexWord = ""
+    var sentenceActionArrayToken = []
+    var sentenceActionArrayWord = []
+    var sentenceAction = ""
+    var dateBool = false
+    var subjSet = false
+    var sentencecomplete = false
+    var locationFoundBool = false
+    var locationFound = ""
+
+    for (var word = 0; word < sentence.length; word++) {
+        if (sentence[word][1] == labelPerson && subjSet == false) {
+            if (sentence[word - 1] == undefined) {
+
             }
-            else if (sentence[word][1] == labelLocation && subjSet == false) {
-                location = location + sentence[word][0] + " "
-                bool = true
+            else if (sentence[word - 1][1] == "NNP") {
+                person = person + sentence[word - 1][0] + " "
             }
-            else if ((sentence[word][1] == "NNP" || sentence[word][1] == "NN" || sentence[word][1] == "N" || sentence[word][1] == "NNPS") && subjSet == false) {
-                subject = subject + sentence[word][0] + " "
-                bool = true
+            person = person + sentence[word][0] + " "
+            personBool = true
+        }
+        else if (sentence[word][1] == labelLocation && subjSet == false) {
+            if (sentence[word - 1] == undefined) {
+
             }
-            else if (bool == true && verbBool == false) {
-                if (sentence[word][1] == "VBN") {
-                    verb = sentence[word][0]
-                    verbBool = true
+            else if (sentence[word - 1][1] == "NNP") {
+                location = location + sentence[word - 1][0] + " "
+            }
+            location = location + sentence[word][0] + " "
+            locationBool = true
+        }
+
+        else if ((personBool == true || locationBool == true) && verbBool == false) {
+            if (sentence[word][1] == "VBN" || sentence[word][1] == "VBD") {
+                var verbTenses = nlp('You ' + sentence[word][0] + ' them').verbs().conjugate()[0]
+                if (verbTenses == undefined) {
+                    verb1 = sentence[word][0]
                 }
-                else if (sentence[word][1] == "VBD") {
-                    verb = sentence[word][0]
-                    verbBool = true
+                else if (verbTenses.PastTense == sentence[word][0]) {
+                    pastensebool = true
                 }
-                subjSet = true
+                verb1 = sentence[word][0]
+                verb2 = sentence[word][0]
+                verbBool = true
             }
-            else if (verbBool == true) {
-                if (sentence[word][1] == labelLocation && locationBool == false) {
-                    locationT = locationT + sentence[word][0] + " "
-                    locationBool = true
+            subjSet = true
+        }
+        else if (verbBool == true) {
+            if ((sentence[word][1] == "VBN" || sentence[word][1] == "VBD") && compositeverb == true) {
+                verb1 = verb1 + " " + sentence[word][0]
+                verb2 = verb2 + " " + sentence[word][0]
+            }
+            else {
+                if (sentence[word][1] == "IN" || sentence[word][1] == "DT" && sentencecomplete == false) {
+                    inBool = true
+                    inboolword = sentence[word][0]
+                    sentenceActionArrayToken.push(sentence[word][1])
+                    sentenceActionArrayWord.push(sentence[word][0])
                 }
-                if (locationBool == false && sentence[word][1] !== ".") {
-                    sentenceActionArray.push(sentence[word][0])
+                else if (inBool == true && sentence[word][1] == labelLocation && sentencecomplete == false) {
+                    locationFound = sentence[word][0] + " "
+                    locationFoundBool = true
+                    sentencecomplete == true
+                }
+                else if (locationFoundBool == false && sentencecomplete == false) {
+                    sentenceActionArrayToken.push(sentence[word][1])
+                    sentenceActionArrayWord.push(sentence[word][0])
                 }
             }
         }
-        if ((location !== "" || person !== "" || subject !== "") && verb !== undefined && locationT !== "") {
-            if (regex1InVariation.test(tokenSentence) == true) {
-                for (var sentenceAct = 0; sentenceAct < sentenceActionArray.length - 1; sentenceAct++) {
-                    sentenceAction = sentenceAction + sentenceActionArray[sentenceAct] + " "
+        compositeverb = false
+    }
+    if (verb1 !== undefined) {
+        if (sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "IN" || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "," || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "CC") {
+            sentenceActionArrayWord.splice(sentenceActionArrayWord.length - 1, 1)
+            sentenceActionArrayToken.splice(sentenceActionArrayToken.length - 1, 1)
+        }
+        if (sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "IN" || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "CC" || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == ",") {
+            sentenceActionArrayWord.splice(sentenceActionArrayWord.length - 1, 1)
+            sentenceActionArrayToken.splice(sentenceActionArrayToken.length - 1, 1)
+        }
+        if (sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "IN" || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "CC" || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == ",") {
+            sentenceActionArrayWord.splice(sentenceActionArrayWord.length - 1, 1)
+            sentenceActionArrayToken.splice(sentenceActionArrayToken.length - 1, 1)
+        }
+        for (var z = 0; z < sentenceActionArrayWord.length; z++) {
+            sentenceAction = sentenceAction + sentenceActionArrayWord[z] + " "
+        }
+        if (person !== "") {
+            if (locationFound != "") {
+                if (pastensebool == true) {
+                    var question1 = "Where was it that " + person + " " + verb1 + " " + sentenceAction + "?"
+                    var answer1 = locationFound
+                    var question2 = "Who " + verb1 + " " + sentenceAction + " in " + locationFound + "?"
+                    var answer2 = person
+                }
+                else {
+                    var question1 = "Where did " + person + " " + verb1 + " " + sentenceAction + "?"
+                    var answer1 = locationFound
+                    var question2 = "Who " + verb1 + " " + sentenceAction + " in " + locationFound + "?"
+                    var answer2 = person
                 }
             }
-            else if (regex1.test(tokenSentence) == true) {
-                for (var sentenceAct = 0; sentenceAct < sentenceActionArray.length; sentenceAct++) {
-                    sentenceAction = sentenceAction + sentenceActionArray[sentenceAct] + " "
+        }
+        else if (location !== "") {
+            if (locationFound != "") {
+                if (pastensebool == true) {
+                    var question1 = "Where was it that " + location + " " + verb1 + " " + sentenceAction + "?"
+                    var answer1 = locationFound
+                    var question2 = "What territory " + verb1 + " " + sentenceAction + "?"
+                    var answer2 = capitalizeFirstLetter(locationFound)
                 }
-            }
-            if (location !== "") {
-                var question1 = "Where did " + location + natural.PorterStemmer.stem(verb) + " " + sentenceAction + "?"
-                var answer1 = locationT
-                var question2 = "Which region " + verb + " " + sentenceAction + "in" + " " + locationT + "?"
-                var answer2 = location
-            }
-            else if (person !== "") {
-                var question1 = "Where did " + person + natural.PorterStemmer.stem(verb) + " " + sentenceAction + "?"
-                var answer1 = locationT
-                var question2 = "Who " + verb + " " + sentenceAction + "in" + " " + locationT + "?"
-                var answer2 = person
-            }
-            else if (subject !== "") {
-                var question1 = "Where did the " + subject + natural.PorterStemmer.stem(verb) + " " + sentenceAction + "?"
-                var answer1 = locationT
-                var question2 = "What " + verb + " " + sentenceAction + "in" + " " + locationT + "?"
-                var answer2 = "(The) " + subject
+                else {
+                    var question1 = "Where did " + location + " " + verb1 + " " + sentenceAction + "?"
+                    var answer1 = locationFound
+                    var question2 = "Which territory did " + location + verb1 + " " + sentenceAction + "?"
+                    var answer2 = capitalizeFirstLetter(locationFound)
+                }
+
             }
         }
     }
+
     if (question1 !== undefined && answer1 !== undefined) {
         whereQAs.push(question1)
         whereQAs.push(answer1)
@@ -353,7 +505,6 @@ function whereQuestion(sentence) {
     if (whereQAs.length > 0) {
         return [whereQAs, whereQAs2];
     }
-
 }
 
 function whenQuestion(sentence) {
@@ -366,219 +517,199 @@ function whenQuestion(sentence) {
     for (var word = 0; word < sentence.length; word++) {
         tokenSentence = tokenSentence + sentence[word][1] + " "
     }
-    var regex1 = new RegExp('NNP.PERS (VB.*) IN (DATE)+');
-    var regex2 = new RegExp('((NNP\.LOC)+|NNP+|(NNP\.PERS)+|NNPS+|NN+|N+) (VB.*) .* IN DATE');
-    var regex2Between = new RegExp('((NNP\.LOC)+|NNP+|(NNP\.PERS)+|NNPS+|NN+|N+) (VB.*) .* IN DATE CC DATE');
-    var regex3 = new RegExp('((NNP\.LOC)+|NNP+|(NNP\.PERS)+|NNPS+|NN+|N+)*. \(DATE .* DATE\)');
-    // var regex3 = new RegExp('((NNP\.LOC)+|NNP+|NNP.PERS) (VB.*) .* (NN|NNP.LOC) .* IN DATE CC DATE');
+    var regex1 = new RegExp('((NNP\.LOC)+|NNP+|(NNP\.PERS)+|NNPS+|NN+|N+) (VB.*) IN (DATE).*');
+
     if (regex1.test(tokenSentence) == true) {
         var personBool = false;
-        var verb
-        var date
+        var locationBool = false;
+        var nounsubjectBool = false
+        var verb1
+        var verb2
+        var date = ""
+        var date2 = ""
         var person = ""
+        var location = ""
+        var nounSubject = ""
         var IN
         var verbBool = false
         var inBool = false
-        for (var word = 0; word < sentence.length; word++) {
-            if (sentence[word][1] == labelPerson) {
-                person = person + sentence[word][0] + " "
-                personBool = true
-            }
-            else {
-                if (personBool == true && sentence[word][1] == "VBD") {
-                    verb = sentence[word][0]
-                    verbBool = true
-                }
-                else {
-                    if (sentence[word][1] == "IN" && verbBool == true) {
-                        IN = sentence[word][0]
-                        inBool = true
-                    }
-                    else {
-                        if (sentence[word][1] == labelDate) {
-                            date = sentence[word][0]
-                        }
-                        inBool = false
-                    }
-                    verbBool = false
-                }
-                personBool = false
-            }
-        }
-        if (date !== undefined && verb != undefined && person !== undefined) {
-            var question1 = "When did " + person + verb + " ?"
-            var answer1 = date
-            var question2 = "Who " + verb + " " + IN + " " + date + " ?"
-            var answer2 = person
-        }
-    }
-    if (regex2.test(tokenSentence) == true || regex2Between.test(tokenSentence) == true) {
-
-        var person = ""
-        var location = ""
-        var subject = ""
-        var verb
-        var date = ""
-        var bool = false
-        var verbBool = false
-        var inBool = false
+        var inboolword = ""
+        var complexDate = false
+        var complexWord = ""
+        var sentenceActionArrayToken = []
+        var sentenceActionArrayWord = []
+        var sentenceAction = ""
         var dateBool = false
         var subjSet = false
-        var sentenceActionArray = []
-        var sentenceAction = ""
+        var sentencecomplete = false
 
         for (var word = 0; word < sentence.length; word++) {
             if (sentence[word][1] == labelPerson && subjSet == false) {
+                if (sentence[word - 1] == undefined) {
+
+                }
+                else if (sentence[word - 1][1] == "NNP") {
+                    person = person + sentence[word - 1][0] + " "
+                }
                 person = person + sentence[word][0] + " "
-                bool = true
+                personBool = true
             }
             else if (sentence[word][1] == labelLocation && subjSet == false) {
                 location = location + sentence[word][0] + " "
-                bool = true
+                locationBool = true
             }
-            else if ((sentence[word][1] == "NNP" || sentence[word][1] == "NN" || sentence[word][1] == "N" || sentence[word][1] == "NNPS") && subjSet == false) {
-                subject = subject + sentence[word][0] + " "
-                bool = true
+            else if (personBool == false && location == false && (sentence[word][1] == "NNP" || sentence[word][1] == "NNP.LOC" || sentence[word][1] == "NNP.PERS" || sentence[word][1] == "PRP$" || sentence[word][1] == "DT" || sentence[word][1] == "N" || sentence[word][1] == "NN" || sentence[word][1] == "JJ" || sentence[word][1] == "NNS" || sentence[word][1] == "NNPS") && subjSet == false) {
+                nounSubject = nounSubject + sentence[word][0] + " "
+                nounsubjectBool = true
             }
-            else if (bool == true && verbBool == false) {
-                if (sentence[word][1] == "VBN") {
-                    verb = sentence[word][0]
-                    verbBool = true
-                }
-                else if (sentence[word][1] == "VBD") {
-                    verb = sentence[word][0]
+
+            else if ((personBool == true || locationBool == true || nounsubjectBool == true) && verbBool == false) {
+                if (sentence[word][1] == "VBN" || sentence[word][1] == "VBD") {
+                    var verbTenses = nlp('You ' + sentence[word][0] + ' them').verbs().conjugate()[0]
+                    if (verbTenses == undefined) {
+                        verb1 = sentence[word][0]
+                    }
+                    else if (verbTenses.PastTense == sentence[word][0]) {
+                        pastensebool = true
+                    }
+                    verb1 = sentence[word][0]
+                    verb2 = sentence[word][0]
                     verbBool = true
                 }
                 subjSet = true
             }
             else if (verbBool == true) {
-                if (sentence[word][1] == "IN") {
-                    inBool = true
-                }
-                if (sentence[word][1] == labelDate && inBool == true && dateBool == false) {
-                    date = date + sentence[word][0] + " "
-                    dateBool = true
-                }
-                if (dateBool == false && sentence[word][1] !== ".") {
-                    if (sentence[word][1] !== "IN") {
-                        inBool = false
-                    }
-                    sentenceActionArray.push(sentence[word][0])
-                }
-            }
-        }
-        if ((location !== "" || person !== "" || subject !== "") && verb !== undefined && date !== "") {
-            for (var sentenceAct = 0; sentenceAct < sentenceActionArray.length - 1; sentenceAct++) {
-                sentenceAction = sentenceAction + sentenceActionArray[sentenceAct] + " "
-            }
-            if (location !== "") {
-                var question1 = "When did " + location + natural.PorterStemmer.stem(verb) + " " + sentenceAction + "?"
-                var answer1 = date
-                var question2 = "Which region " + verb + " " + sentenceAction + " " + "in" + " " + date + "?"
-                var answer2 = location
-            }
-            else if (person !== "") {
-                var question1 = "When did " + person + natural.PorterStemmer.stem(verb) + " " + sentenceAction + "?"
-                var answer1 = date
-                var question2 = "Who " + verb + " " + sentenceAction + " " + "in" + " " + date + "?"
-                var answer2 = person
-            }
-            else if (subject !== "") {
-                var question1 = "When did the " + subject + natural.PorterStemmer.stem(verb) + " " + sentenceAction + "?"
-                var answer1 = date
-                var question2 = "What " + verb + " " + sentenceAction + " " + "in" + " " + date + "?"
-                var answer2 = "(The) " + subject
-            }
-        }
-    }
-    else if (regex3.test(tokenSentence) == true) {
-        var person = ""
-        var location = ""
-        var subject = ""
-        var date1 = ""
-        var date2 = ""
-        var bool = false
-        var paranthesisBool1 = false
-        var paranthesisBool2 = false
-        var subjSet = false
-        var toBool = false
-
-        for (var word = 0; word < sentence.length; word++) {
-            if (sentence[word][1] == labelPerson && subjSet == false) {
-                person = person + sentence[word][0] + " "
-                bool = true
-            }
-            else if (sentence[word][1] == labelLocation && subjSet == false) {
-                location = location + sentence[word][0] + " "
-                bool = true
-            }
-            else if ((sentence[word][1] == "NNP" || sentence[word][1] == "NN" || sentence[word][1] == "N" || sentence[word][1] == "NNPS") && subjSet == false) {
-                subject = subject + sentence[word][0] + " "
-                bool = true
-            }
-            else if (bool == true && paranthesisBool1 == false) {
-                if (sentence[word][1] == "(") {
-                    paranthesisBool1 = true
-
-                }
-
-            }
-            else if (paranthesisBool1 == true && toBool == false) {
-                if (sentence[word][1] == labelDate) {
-                    date1 = date1 + sentence[word][0] + " "
+                if ((sentence[word][1] == "VBN" || sentence[word][1] == "VBD") && compositeverb == true) {
+                    verb1 = verb1 + " " + sentence[word][0]
+                    verb2 = verb2 + " " + sentence[word][0]
                 }
                 else {
-                    toBool = true
+                    if (sentence[word][1] == "IN" && complexDate == false && sentencecomplete == false) {
+                        inBool = true
+                        inboolword = sentence[word][0]
+                        sentenceActionArrayToken.push(sentence[word][1])
+                        sentenceActionArrayWord.push(sentence[word][0])
+                    }
+                    else if (inBool == true && sentence[word][1] == labelDate && complexDate == false && sentencecomplete == false) {
+                        date = date + sentence[word][0] + " "
+                        dateBool = true
+                    }
+
+                    else if (complexDate == true && sentence[word][1] == "RB" && sentencecomplete == false) {
+                        complexWord = complexWord + sentence[word][0]
+                    }
+                    else if (complexDate == true && sentence[word][1] == labelDate) {
+                        date2 = sentence[word][0]
+                    }
+                    else if (dateBool == false && sentencecomplete == false && sentencecomplete == false) {
+                        sentenceActionArrayToken.push(sentence[word][1])
+                        sentenceActionArrayWord.push(sentence[word][0])
+                    }
+                    else if (dateBool == true && (sentence[word][1] == "TO" || sentence[word][1] == "CC") && sentencecomplete == false) {
+                        complexDate = true
+                        complexWord = sentence[word][0]
+                    }
+                    else if (dateBool == true && (sentence[word][1] !== "TO" || sentence[word][1] == "CC") && sentencecomplete == false) {
+                        sentencecomplete = true
+                    }
                 }
             }
-            else if (toBool == true) {
-                if (sentence[word][1] == labelDate) {
-                    date2 = date2 + sentence[word][0] + " "
-                }
-            }
+            compositeverb = false
         }
-        if ((location !== "" || person !== "" || subject !== "") && date1 !== "" && date2 !== "") {
-            if (location !== "") {
-                var question1 = "When was " + location + "established?"
-                var answer1 = date1
-                var question2 = "When did " + location + "end?"
-                var answer2 = date2
+        if (verb1 !== undefined) {
+            if (sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "IN" || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "," || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "CC") {
+                sentenceActionArrayWord.splice(sentenceActionArrayWord.length - 1, 1)
+                sentenceActionArrayToken.splice(sentenceActionArrayToken.length - 1, 1)
             }
-            else if (person !== "") {
-                var question1 = "When was " + person + "born?"
-                var answer1 = date1
-                var question2 = "When did " + person + "die?"
-                var answer2 = date2
+            if (sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "IN" || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == "CC" || sentenceActionArrayToken[sentenceActionArrayToken.length - 1] == ",") {
+                sentenceActionArrayWord.splice(sentenceActionArrayWord.length - 1, 1)
+                sentenceActionArrayToken.splice(sentenceActionArrayToken.length - 1, 1)
             }
-            else if (subject !== "") {
-                var question1 = "When did the " + subject + "start?"
-                var answer1 = date1
-                var question2 = "When did the " + subject + "end?"
-                var answer2 = date2
+            for (var z = 0; z < sentenceActionArrayWord.length; z++) {
+                sentenceAction = sentenceAction + sentenceActionArrayWord[z] + " "
+            }
+            if (person !== "") {
+                if (date !== "" && date2 !== "") {
+                    var question1 = person + " " + verb1 + " " + sentenceAction + " " + inboolword + " between which dates? "
+                    var answer1 = (date + complexWord + " " + date2)
+                    var question2 = " Who " + verb1 + " " + sentenceAction + " between " + date + " and " + date2 + "?"
+                    var answer2 = person
+                }
+                else if (date != "" && date2 == "") {
+                    if (pastensebool == true) {
+                        var question1 = "When was it that " + person + " " + verb1 + " " + sentenceAction + "?"
+                        var answer1 = date
+                        var question2 = "Who " + verb1 + " " + sentenceAction + "?"
+                        var answer2 = person
+                    }
+                    else {
+                        var question1 = "When did " + person + " " + verb1 + " " + sentenceAction + "?"
+                        var answer1 = date
+                        var question2 = "Who " + verb1 + " " + sentenceAction + "?"
+                        var answer2 = person
+                    }
+                }
+            }
+            else if (location !== "") {
+                if (date !== "" && date2 !== "") {
+                    var question1 = location + " " + verb1 + " " + sentenceAction + " " + inboolword + " between which dates? "
+                    var answer1 = (date + complexWord + " " + date2)
+                    var question2 = " Which location " + verb1 + " " + sentenceAction + " between " + date + " and " + date2 + "?"
+                    var answer2 = location
+                }
+                else if (date != "" && date2 == "") {
+                    if (pastensebool == true) {
+                        var question1 = "When was it that " + location + " " + verb1 + " " + sentenceAction + "?"
+                        var answer1 = date
+                        var question2 = "Which location " + verb1 + " " + sentenceAction + "?"
+                        var answer2 = location
+                    }
+                    else {
+                        var question1 = "When did " + location + " " + verb1 + " " + sentenceAction + "?"
+                        var answer1 = date
+                        var question2 = "Which location " + verb1 + " " + sentenceAction + "?"
+                        var answer2 = location
+                    }
+                }
+            }
+            else if (nounSubject !== "") {
+                if (date != "" && date2 != "") {
+                    var question1 = nounSubject + " " + verb1 + " " + sentenceAction + " " + inboolword + " between which dates? "
+                    var answer1 = (date + complexWord + " " + date2)
+                    var question2 = " What " + verb1 + " " + sentenceAction + " between " + date + " and " + date2 + "?"
+                    var answer2 = capitalizeFirstLetter(nounSubject)
+                }
+                else if (date != "" && date2 == "") {
+                    if (pastensebool == true) {
+                        var question1 = "When was it that " + minimizeFirstLetter(nounSubject) + " " + verb1 + " " + sentenceAction + "?"
+                        var answer1 = date
+                        var question2 = "What " + verb1 + " " + sentenceAction + "?"
+                        var answer2 = capitalizeFirstLetter(nounSubject)
+                    }
+                    else {
+                        var question1 = "When did " + minimizeFirstLetter(nounSubject) + " " + verb1 + " " + sentenceAction + "?"
+                        var answer1 = (date)
+                        var question2 = "What " + verb1 + " " + sentenceAction + "?"
+                        var answer2 = capitalizeFirstLetter(nounSubject)
+                    }
+
+                }
             }
         }
     }
-
-
-
     if (question1 !== undefined && answer1 !== undefined) {
         whenQAs.push(question1)
         whenQAs.push(answer1)
-
     }
     if (question2 !== undefined && answer2 !== undefined) {
         whenQAs2.push(question2)
         whenQAs2.push(answer2)
     }
-
     if (whenQAs.length > 0) {
-        return [whenQAs, whenQAs2]
+        return [whenQAs, whenQAs2];
     }
-
 }
-
-
-function valobjTag(taggedTokSent) {
+function howManyQuestion(taggedTokSent) {
     var howManyQAs = [];
     var who = false
     valobjnum = 0
@@ -762,10 +893,65 @@ function closest(num, arr) {
     return curr;
 }
 
+
+
+
 function capitalizeFirstLetter(string) {
     return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
+function minimizeFirstLetter(string) {
+    return string.charAt(0).toLowerCase() + string.slice(1);
+}
+
+// Testing server settup
+
+// http.createServer((request, response) => {
+//     const { headers, method, url } = request;
+//     let body = [];
+//     var text = "";
+//     request.on('error', (err) => {
+//         console.error(err);
+//     }).on('data', (chunk) => {
+//         body.push(chunk);
+//         text = text + chunk;
+//     }).on('end', () => {
+//         body = Buffer.concat(body).toString();
+
+//         response.on('error', (err) => {
+//             console.error(err);
+//         });
+
+//         response.statusCode = 200;
+
+//         response.setHeader('Content-Type', 'text/html');
+
+//         // Website you wish to allow to connect
+//         response.setHeader('Access-Control-Allow-Origin', 'http://localhost:4200');
+//         //  response.setHeader('Access-Control-Allow-Origin', 'https://questiongeneratingwebsite.herokuapp.com');
+
+//         // Request methods you wish to allow
+//         response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+
+//         // Request headers you wish to allow
+//         response.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
+
+//         // Set to true if you need the website to include cookies in the requests sent
+//         // to the API (e.g. in case you use sessions)
+//         response.setHeader('Access-Control-Allow-Credentials', true);
+
+
+//         fs.readFile('michaeljackson.txt', 'utf8', (err, data) => {
+//             if (err) throw err;
+//             var arrayQAs = JSON.stringify(sentenceArray(data));
+//             response.write(arrayQAs);
+//             response.end();
+//         });
+
+//     });
+// }).listen(8000);
+
+// Live server setup
 
 http.createServer((request, response) => {
     const { headers, method, url } = request;
@@ -810,4 +996,3 @@ http.createServer((request, response) => {
 
     });
 }).listen(port);
-
