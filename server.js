@@ -639,13 +639,13 @@ function whenQuestion(sentence) {
                     if (pastensebool == true) {
                         var question1 = "When was it that " + person + " " + verb1 + " " + sentenceAction + "?"
                         var answer1 = date
-                        var question2 = "Who " + verb1 + " " + sentenceAction + "?"
+                        var question2 = "Who " + verb1 + " " + sentenceAction + " in " + date + "?"
                         var answer2 = person
                     }
                     else {
                         var question1 = "When did " + person + " " + verb1 + " " + sentenceAction + "?"
                         var answer1 = date
-                        var question2 = "Who " + verb1 + " " + sentenceAction + "?"
+                        var question2 = "Who " + verb1 + " " + sentenceAction + " in " + date + "?"
                         var answer2 = person
                     }
                 }
@@ -661,13 +661,13 @@ function whenQuestion(sentence) {
                     if (pastensebool == true) {
                         var question1 = "When was it that " + location + " " + verb1 + " " + sentenceAction + "?"
                         var answer1 = date
-                        var question2 = "Which location " + verb1 + " " + sentenceAction + "?"
+                        var question2 = "Which location " + verb1 + " " + sentenceAction + " in " + date +"?"
                         var answer2 = location
                     }
                     else {
                         var question1 = "When did " + location + " " + verb1 + " " + sentenceAction + "?"
                         var answer1 = date
-                        var question2 = "Which location " + verb1 + " " + sentenceAction + "?"
+                        var question2 = "Which location " + verb1 + " " + sentenceAction + " in " + date + "?"
                         var answer2 = location
                     }
                 }
@@ -683,13 +683,13 @@ function whenQuestion(sentence) {
                     if (pastensebool == true) {
                         var question1 = "When was it that " + minimizeFirstLetter(nounSubject) + " " + verb1 + " " + sentenceAction + "?"
                         var answer1 = date
-                        var question2 = "What " + verb1 + " " + sentenceAction + "?"
+                        var question2 = "What " + verb1 + " " + sentenceAction + " in " + date +"?"
                         var answer2 = capitalizeFirstLetter(nounSubject)
                     }
                     else {
                         var question1 = "When did " + minimizeFirstLetter(nounSubject) + " " + verb1 + " " + sentenceAction + "?"
                         var answer1 = (date)
-                        var question2 = "What " + verb1 + " " + sentenceAction + "?"
+                        var question2 = "What " + verb1 + " " + sentenceAction + " in " + date + "?"
                         var answer2 = capitalizeFirstLetter(nounSubject)
                     }
 
@@ -995,4 +995,4 @@ http.createServer((request, response) => {
         response.end();
 
     });
-}).listen(port);
+}).listen(8000);
